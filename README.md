@@ -27,6 +27,13 @@ We conduct all experiments on **three** datasets:
 
 For the Federated ISIC2019 dataset, the path to __ISIC_2019_Training_Input_preprocessed__ directory and __train_test_split__  csv file, are required to run different methods on this dataset
 
+In order to add a new dataset run the following command:
+
+```
+python generate_dataset.py  --dataset_name [choose the dataset name] --seed [seed number] --base_dir [path data folder containing images] --csv_file_path [Path to train_test_split csv]
+
+```
+
 ## Running Centralized Training/Testing
 In order to run  **Centralized Training** run the following command: 
 

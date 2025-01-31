@@ -13,7 +13,7 @@ import torch
 import medmnist
 from medmnist import INFO
 
-from utils import get_data, CustomDataset, ISIC2019, blood_noniid, distribute_data
+from utils import get_data, CustomDataset, ISIC2019, blood_noniid, distribute_data, OTHER
 
 import random 
 
@@ -165,6 +165,60 @@ def isic2019(input_size = 224, root_dir = './ISIC_2019_Training_Input_preprocess
     ]
 
     test_centralized_dataset =  ISIC2019(
+        csv_file_path= csv_file_path, 
+        root_dir=root_dir, client_id=None , train=False, centralized=True, input_size= input_size
+        )
+
+    test_dataloader_centralized = DataLoader(dataset=test_centralized_dataset,batch_size= batch_size, shuffle=False, num_workers=num_workers)
+
+    
+    centralized_dataloader_train = DataLoader(dataset=centralized_dataset_train,batch_size= batch_size, shuffle=True, num_workers=num_workers)
+
+    return clients_dataloader_train, test_dataloaders, centralized_dataloader_train, clients_datasets_train, test_datasets, test_dataloader_centralized
+
+def other(input_size, root_dir, csv_file_path, batch_size, num_workers, num_clients):
+    
+    """
+        Function that return train and test dataloaders and datasets fir centralized training and federated settings. 
+
+        Input: 
+            root_dir (str): path to directory that has preproceessed images from FLamby library
+            csv_file_path (str): Path to the csv file that has train_test_split as per FLamby Library
+        
+        Return: 
+            Clients train dataloaders (federated), Clients test loaders, Train dataloader (centralized), 
+            Clients train datasets (Federated), Clients test datasets (Federated), Test dataloader (All testing images in one loader) 
+    """
+    clients_datasets_train = [
+        OTHER(
+        csv_file_path= csv_file_path, 
+        root_dir=root_dir,client_id=i,train=True, centralized=False, input_size= input_size) for i in range(num_clients)
+    ]
+    
+    test_datasets = [
+         OTHER(
+        csv_file_path= csv_file_path, 
+        root_dir=root_dir, client_id=i, train=False, centralized=False, input_size= input_size) for i in range(num_clients)
+        
+    ]
+    
+    centralized_dataset_train = OTHER(
+        csv_file_path= csv_file_path, 
+        root_dir=root_dir, client_id=None ,train=True, centralized=True, input_size= input_size
+    )
+    
+    clients_dataloader_train = [
+        DataLoader(
+        dataset=clients_datasets_train[i],batch_size= batch_size, shuffle=True, num_workers=num_workers
+        ) for i in range(num_clients)
+    ]
+    
+    test_dataloaders = [
+        DataLoader(dataset=test_datasets[i],batch_size= batch_size, shuffle=False, num_workers=num_workers)
+        for i in range(num_clients)
+    ]
+
+    test_centralized_dataset =  OTHER(
         csv_file_path= csv_file_path, 
         root_dir=root_dir, client_id=None , train=False, centralized=True, input_size= input_size
         )

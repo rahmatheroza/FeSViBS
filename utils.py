@@ -228,6 +228,60 @@ class ISIC2019(Dataset):
 
         return sample, target
 
+class OTHER(Dataset): 
+
+    def __init__(self, csv_file_path, root_dir, client_id, train = True, centralized = False, input_size = 224) -> None:
+        super().__init__()
+        self.image_root = root_dir   
+        self.train = train  
+        csv_file = pd.read_csv(csv_file_path)
+        self.centralized = centralized
+
+        if train:
+            if centralized: 
+                self.csv = csv_file[csv_file['fold'] == 'train'].reset_index()
+            else:
+                self.csv = csv_file[csv_file['fold2'] == f'train_{client_id}'].reset_index()
+
+        elif train == False:  
+            if centralized: 
+                self.csv = csv_file[csv_file['fold'] == 'test'].reset_index()
+            else: 
+                self.csv = csv_file[csv_file['fold2'] == f'test_{client_id}'].reset_index()
+
+        if train:
+            self.transform = transforms.Compose([
+                transforms.RandomRotation(10), 
+                transforms.RandomHorizontalFlip(0.5), 
+                transforms.RandomVerticalFlip(0.5), 
+                transforms.RandomAffine(degrees = 0, shear=0.05),
+                transforms.RandomResizedCrop((input_size, input_size), scale=(0.85,1.1)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) 
+            ])
+            
+        elif train == False:
+           self.transform = transforms.Compose([
+                    transforms.Resize((input_size, input_size)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+    def __len__(self):
+        return self.csv.shape[0]
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_name = os.path.join(self.image_root,
+                                self.csv['image'][idx])
+        sample = Image.open(img_name)
+        target = self.csv['target'][idx]
+
+        sample = self.transform(sample)
+
+        return sample, target
+
 def blood_noniid(numOfAgents, data, batch_size):
     """
         Function to divide the bloodmnist among clients 

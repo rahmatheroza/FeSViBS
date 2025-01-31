@@ -60,7 +60,7 @@ def fesvibs(args):
 
     elif args.dataset_name == 'other': 
         num_classes = args.num_classes
-        DATALOADERS, _, _, _, _, test_loader = other(input_size= args.input_size, batch_size = args.batch_size, root_dir=args.root_dir, csv_file_path=args.csv_file_path, num_workers=args.num_workers, num_clients = args.num_clients)
+        DATALOADERS, test_loaders, _, _, _, test_loader = other(input_size= args.input_size, batch_size = args.batch_size, root_dir=args.root_dir, csv_file_path=args.csv_file_path, num_workers=args.num_workers, num_clients = args.num_clients)
         num_channels = 3
 
     criterion = nn.CrossEntropyLoss()
@@ -79,13 +79,15 @@ def fesvibs(args):
         initial_block= args.initial_block, final_block= args.final_block,
         )
     
-
-    if args.dataset_name != 'isic2019' and args.dataset_name != 'other':
-        print('Distribute Images Among Clients')
-        Split.distribute_images(dataset_name=args.dataset_name, train_data= traindataset,test_data= testdataset ,batch_size = args.batch_size)  
-    else: 
+    if args.dataset_name == 'isic2019':
         Split.CLIENTS_DATALOADERS = DATALOADERS
         Split.testloader = test_loader
+    elif args.dataset_name == 'other':
+        Split.CLIENTS_DATALOADERS = DATALOADERS
+        Split.testloaders = test_loaders
+    else:
+        print('Distribute Images Among Clients')
+        Split.distribute_images(dataset_name=args.dataset_name, train_data= traindataset,test_data= testdataset ,batch_size = args.batch_size)  
 
     Split.set_optimizer(args.opt_name, lr = args.lr)
     Split.init_logs()
@@ -135,7 +137,7 @@ def fesvibs(args):
                                                                         mean_avg_head.to(device))
        
         for client_i in range(args.num_clients):
-            Split.eval_round(client_i)
+            Split.fed_eval_round(client_i)
             
         print('---------')
 
@@ -145,7 +147,7 @@ def fesvibs(args):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Run Centralized Experiments')
+    parser = argparse.ArgumentParser(description='Run FeSViBS Experiments')
     parser.add_argument('--dataset_name', type=str, choices=['HAM', 'bloodmnist', 'isic2019', 'other'], help='Dataset Name')
     parser.add_argument('--input_size',  type=int, default= 224, help='Input size --> (input_size, input_size), default : 224')
     parser.add_argument('--local_round',  type=int, default= 2, help='Local round before federation in FeSViBS, default : 2')

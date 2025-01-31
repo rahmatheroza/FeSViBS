@@ -463,6 +463,33 @@ class SplitFeSViBS(SplitNetwork):
         return weight_dic
     
     
+    def fed_eval_round(self, client_i):
+        """
+        Federated evaluation loop. 
+
+        client_i: Client index.
+                
+        """
+        running_loss_client_i = 0
+        whole_labels = []
+        whole_preds = []
+        whole_probs = []
+        num_b = self.train_chosen_blocks[client_i]
+        print(f"Chosen block for testing: {num_b}")
+        self.network.eval()
+        with torch.no_grad():
+            for data in tqdm(self.testloaders[client_i]): 
+                imgs, labels = data[0].to(self.device), data[1].to(self.device)
+                labels = labels.reshape(labels.shape[0])
+                tail_output = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
+                loss = self.criterion(tail_output, labels)
+                running_loss_client_i+= loss.item() 
+                _, predicted = torch.max(tail_output, 1)
+                whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
+                whole_labels.append(labels.detach().cpu())
+                whole_preds.append(predicted.detach().cpu())    
+            self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, len(self.testloaders[client_i]), whole_probs, train= False)
+
     def eval_round(self, client_i):
         """
         Evaluation loop. 

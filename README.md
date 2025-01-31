@@ -27,10 +27,11 @@ We conduct all experiments on **three** datasets:
 
 For the Federated ISIC2019 dataset, the path to __ISIC_2019_Training_Input_preprocessed__ directory and __train_test_split__  csv file, are required to run different methods on this dataset
 
-In order to add a new dataset run the following command:
+Other datasets can be used by generating the required CSV file. An input CSV file must exist with the columns: 'image' (containing the image filename with its extension), 'target', and 'client'. The 'target' and 'client' columns should contain label-encoded values starting from 0, 1, etc.
+In order to generate a new dataset run the following command:
 
 ```
-python generate_dataset.py  --dataset_name [choose the dataset name] --seed [seed number] --base_dir [path data folder containing images] --csv_file_path [Path to train_test_split csv]
+python generate_dataset.py  --input_csv [path to the input csv] --output_csv [path to the output csv] --test_size [test split size, default = 0.2]
 
 ```
 
@@ -79,6 +80,13 @@ In order to run  **FeSViBS without** Differential Privacy (DP) run the following
 
 ```
 python FeSViBS.py --fesvibs_arg True --local_round [number of local rounds before federation] --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
+
+```
+
+In order to run  **FeSViBS** with a different dataset, specify num_classes and set dataset_name to 'other': 
+
+```
+python FeSViBS.py --fesvibs_arg True --local_round [number of local rounds before federation] --dataset_name 'other' --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --save_every_epochs [Save pickle files] --root_dir [Path to the images folder]  --csv_file_path [Path to the generated csv] --num_classes [Number of classes] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6
 
 ```
 

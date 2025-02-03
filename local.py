@@ -8,10 +8,10 @@ import random
 import argparse 
 
 from models import CentralizedFashion
-from dataset import skinCancer, bloodmnisit, isic2019, distribute_images
+from dataset import skinCancer, bloodmnisit, isic2019, distribute_images, other
 
 
-def local(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_every_epochs, model_name, pretrained, opt_name, seed, base_dir, root_dir, csv_file_path, num_clients, local_arg):
+def local(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_every_epochs, model_name, pretrained, opt_name, seed, base_dir, root_dir, csv_file_path, num_clients, local_arg, num_classes):
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -37,12 +37,18 @@ def local(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_ev
         num_classes = 8
         DATALOADERS, _, _, _, _, test_loader = isic2019(input_size= input_size, batch_size = batch_size, root_dir=root_dir, csv_file_path=csv_file_path, num_workers=num_workers)
         num_channels = 3
+
+    elif dataset_name == 'other': 
+        # num_classes = 8 # num_classes in a user's input
+        DATALOADERS, _, _, _, _, test_loader = other(input_size= input_size, batch_size = batch_size, root_dir=root_dir, csv_file_path=csv_file_path, num_workers=num_workers, num_clients = num_clients)
+        num_channels = 3
         
 
 
     print('Create Directory for metrics loggings!')
     save_dir = f'{model_name}_{lr}lr_{dataset_name}_{Epochs}rounds_Local'
-    os.mkdir(save_dir)
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     print(f'Train Local Fashion:\n Number of Clients :{num_clients}\n model: {model_name}\n dataset: {dataset_name}\n LR: {lr}\n Number of Epochs: {Epochs}\n Loggings: {save_dir}\n')
 
@@ -91,7 +97,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Run Centralized Experiments')
 
-    parser.add_argument('--dataset_name', type=str, choices=['HAM', 'bloodmnist', 'isic2019'], help='Dataset Name')
+    parser.add_argument('--dataset_name', type=str, choices=['HAM', 'bloodmnist', 'isic2019', 'other'], help='Dataset Name')
     parser.add_argument('--num_clients',  type=int, default= 6, help='Number of clients, default : 6')
     parser.add_argument('--local_arg', type=bool, default= True, help='Local Argument, default: True')
     parser.add_argument('--input_size',  type=int, default= 224, help='Input size --> (input_size, input_size), default : 224')
@@ -107,6 +113,7 @@ if __name__ == "__main__":
     parser.add_argument('--base_dir', type=str, default= None, help='')
     parser.add_argument('--root_dir', type=str, default= None, help='')
     parser.add_argument('--csv_file_path', type=str, default=None, help='')
+    parser.add_argument('--num_classes',  type=int, default= 2, help='Number of classes for other dataset, default: 2')
 
     args = parser.parse_args()
 
@@ -117,5 +124,6 @@ if __name__ == "__main__":
         pretrained= args.pretrained, batch_size= args.batch_size, 
         Epochs= args.Epochs, opt_name= args.opt_name, lr= args.lr, 
         save_every_epochs= args.save_every_epochs, seed= args.seed, 
-        base_dir= args.base_dir, root_dir= args.root_dir, csv_file_path= args.csv_file_path
+        base_dir= args.base_dir, root_dir= args.root_dir, csv_file_path= args.csv_file_path, 
+        num_classes = args.num_classes
         )

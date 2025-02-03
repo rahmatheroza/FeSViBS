@@ -176,7 +176,7 @@ def isic2019(input_size = 224, root_dir = './ISIC_2019_Training_Input_preprocess
 
     return clients_dataloader_train, test_dataloaders, centralized_dataloader_train, clients_datasets_train, test_datasets, test_dataloader_centralized
 
-def other(input_size, root_dir, csv_file_path, batch_size, num_workers, num_clients):
+def other(input_size, root_dir, csv_file_path, batch_size, num_workers, num_clients = 0):
     
     """
         Function that return train and test dataloaders and datasets fir centralized training and federated settings. 

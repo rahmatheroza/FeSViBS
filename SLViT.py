@@ -4,11 +4,11 @@ import numpy as np
 from torch import nn
 import random 
 from models import SLViT, SplitNetwork
-from dataset import skinCancer, bloodmnisit, isic2019
+from dataset import skinCancer, bloodmnisit, isic2019, other
 import argparse 
 from utils import weight_dec_global
 
-def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_every_epochs, model_name, pretrained, opt_name, seed , base_dir, root_dir, csv_file_path, num_clients, DP, epsilon, delta):
+def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_every_epochs, model_name, pretrained, opt_name, seed , base_dir, root_dir, csv_file_path, num_clients, DP, epsilon, delta, num_classes):
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -29,7 +29,8 @@ def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_ev
     if DP: 
         save_dir = f'{model_name}_{lr}lr_{dataset_name}_{num_clients}Clients_({epsilon}, {delta})DP_{batch_size}Batch_SLViT'
     
-    os.mkdir(save_dir)
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     print('Getting the Dataset and Dataloader!')
     if dataset_name == 'HAM': 
@@ -47,6 +48,11 @@ def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_ev
         DATALOADERS, _, _, _, _, test_loader = isic2019(input_size= input_size, batch_size = batch_size, root_dir=root_dir, csv_file_path=csv_file_path, num_workers=num_workers)
         num_channels = 3
 
+    elif dataset_name == 'other': 
+        # num_classes = 8 # num_classes in a user's input
+        DATALOADERS, test_loaders, _, _, _, _ = other(input_size= input_size, batch_size = batch_size, root_dir=root_dir, csv_file_path=csv_file_path, num_workers=num_workers, num_clients = num_clients)
+        num_channels = 3
+
     slvit = SLViT(
         ViT_name= model_name, num_classes=num_classes,
         num_clients=num_clients, in_channels=num_channels,
@@ -62,11 +68,14 @@ def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_ev
         )
 
     print('Distribute Data')
-    if dataset_name != 'isic2019':  
-        Split.distribute_images(dataset_name=dataset_name, train_data=traindataset, test_data=testdataset , batch_size = batch_size)  
-    else:
+    if dataset_name == 'isic2019':  
         Split.CLIENTS_DATALOADERS  = DATALOADERS
         Split.testloader = test_loader
+    elif args.dataset_name == 'other':
+        Split.CLIENTS_DATALOADERS = DATALOADERS
+        Split.testloaders = test_loaders
+    else:
+        Split.distribute_images(dataset_name=dataset_name, train_data=traindataset, test_data=testdataset , batch_size = batch_size)  
 
     Split.set_optimizer(opt_name, lr = lr)
     Split.init_logs()
@@ -96,7 +105,7 @@ def slvit(dataset_name, lr, batch_size, Epochs, input_size, num_workers, save_ev
         Split.network.vit.pos_embed.data = agg_weights['pos_embed'].to(device) + 0.0
         
         for client_i in range(num_clients):
-            Split.eval_round(client_i)
+            Split.fed_eval_round(client_i)
         
         print('---------')
         
@@ -109,7 +118,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Run Centralized Experiments')
 
-    parser.add_argument('--dataset_name', type=str, choices=['HAM', 'bloodmnist', 'isic2019'], help='Dataset Name')
+    parser.add_argument('--dataset_name', type=str, choices=['HAM', 'bloodmnist', 'isic2019', 'other'], help='Dataset Name')
     parser.add_argument('--input_size',  type=int, default= 224, help='Input size --> (input_size, input_size), default : 224')
     parser.add_argument('--num_workers',  type=int, default= 8, help='Number of workers for dataloaders, default : 8')
     parser.add_argument('--num_clients',  type=int, default= 6, help='Number of Clients, default : 6')
@@ -127,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('--DP', type=bool, default= False, help='Differential Privacy , default: False')
     parser.add_argument('--epsilon',  type=float, default= 0, help='Epsilon Value for differential privacy')
     parser.add_argument('--delta',  type=float, default= 0.00001, help='Delta Value for differential privacy')
+    parser.add_argument('--num_classes',  type=int, default= 2, help='Number of classes for other dataset, default: 2')
 
 
     args = parser.parse_args()
@@ -138,5 +148,6 @@ if __name__ == "__main__":
         Epochs= args.Epochs, opt_name= args.opt_name, lr= args.lr, 
         save_every_epochs= args.save_every_epochs, seed= args.seed, 
         base_dir= args.base_dir, root_dir= args.root_dir, csv_file_path= args.csv_file_path,  num_clients = args.num_clients, 
-        DP = args.DP, epsilon = args.epsilon, delta = args.delta
+        DP = args.DP, epsilon = args.epsilon, delta = args.delta,
+        num_classes = args.num_classes
         )

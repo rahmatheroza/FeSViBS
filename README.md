@@ -39,7 +39,7 @@ python generate_dataset.py  --input_csv [path to the input csv] --output_csv [pa
 In order to run  **Centralized Training** run the following command: 
 
 ```
-python centralized.py  --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --Epochs [Number of Epochs]
+python centralized.py  --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --Epochs [Number of Epochs]
 
 ```
 
@@ -48,7 +48,7 @@ python centralized.py  --dataset_name [choose the dataset name] --opt_name [defa
 In order to run  **Local Training/Testing** run the following command: 
 
 ```
-python local.py  --local_arg True --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs]
+python local.py  --local_arg True --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs]
 
 ```
 
@@ -56,14 +56,14 @@ python local.py  --local_arg True --dataset_name [choose the dataset name] --opt
 In order to run  **SLViT without** Differential Privacy (DP) run the following command: 
 
 ```
-python SLViT.py --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs]
+python SLViT.py --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs]
 
 ```
 
 **SLViT with** Differential Privacy (DP) run the following command:
 
 ```
-python SLViT.py --DP True --epsilon [epsilon value] --delta [delta value] --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019] --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs] 
+python SLViT.py --DP True --epsilon [epsilon value] --delta [delta value] --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset] --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs] 
 
 ```
 
@@ -71,7 +71,7 @@ python SLViT.py --DP True --epsilon [epsilon value] --delta [delta value] --data
 In order to run  **SViBS** run the following command: 
 
 ```
-python FeSViBS.py --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
+python FeSViBS.py --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
 
 ```
 
@@ -79,21 +79,14 @@ python FeSViBS.py --dataset_name [choose the dataset name] --opt_name [default i
 In order to run  **FeSViBS without** Differential Privacy (DP) run the following command: 
 
 ```
-python FeSViBS.py --fesvibs_arg True --local_round [number of local rounds before federation] --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
-
-```
-
-In order to run  **FeSViBS** with a different dataset, specify num_classes and set dataset_name to 'other': 
-
-```
-python FeSViBS.py --fesvibs_arg True --local_round [number of local rounds before federation] --dataset_name 'other' --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --save_every_epochs [Save pickle files] --root_dir [Path to the images folder]  --csv_file_path [Path to the generated csv] --num_classes [Number of classes] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6
+python FeSViBS.py --fesvibs_arg True --local_round [number of local rounds before federation] --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
 
 ```
 
 In order to run  **FeSViBS with** Differential Privacy (DP) run the following command: 
 
 ```
-python FeSViBS.py --fesvibs_arg True --DP True --epsilon [epsilon value] --delta [delta value] --local_round [number of local rounds before federation] --dataset_name [choose the dataset name] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to ISIC_2019_Training_Input_preprocessed for ISIC2019]  --csv_file_path [Path to train_test_split csv for ISIC2019] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
+python FeSViBS.py --fesvibs_arg True --DP True --epsilon [epsilon value] --delta [delta value] --local_round [number of local rounds before federation] --dataset_name [choices='HAM', 'bloodmnist', 'isic2019', 'other'] --opt_name [default is Adam] --lr [learning rate] --seed [seed number] --base_dir [path data folder for HAM] --save_every_epochs [Save pickle files] --root_dir [Path to images folder for ISIC2019 and 'other' dataset]  --csv_file_path [Path to train_test_split csv for ISIC2019 and 'other' dataset] --num_classes [Number of classes of 'other' dataset] --num_clients [Number of clients] --Epochs [Number of Epochs] --initial_block 1 --final_block 6 
 
 ```
 ## Citation

@@ -12,6 +12,70 @@ from sklearn.metrics import balanced_accuracy_score
 from dataset import blood_noniid, bloodmnisit, distribute_data
 from utils import weight_vec
 
+import torch.nn.functional as F
+from torchvision.transforms.functional import adjust_brightness, adjust_contrast, adjust_hue
+import random
+
+transformations = {
+    0: {'brightness': 1.4, 'contrast': 1.2, 'hue': 0.08}, 
+    1: {'brightness': 1.2, 'contrast': 1.1, 'hue': 0.06}, 
+    2: {'brightness': 1.0, 'contrast': 1.0, 'hue': 0.04}, 
+    3: {'brightness': 0.8, 'contrast': 0.8, 'hue': 0.02}, 
+    4: {'brightness': 0.7, 'contrast': 0.7, 'hue': 0.01},  
+    5: {'brightness': 0.6, 'contrast': 0.6, 'hue': 0.0},  
+}
+
+def  transition_batch_images(batch_tensor, current_transformation, target_transformations):
+    """
+    Transforms a batch of images from a single current transformation to per-image target transformations.
+    
+    Args:
+        batch_tensor (torch.Tensor): Input batch of images, shape (N, C, H, W).
+        current_transformation (int): Scalar index of the current transformation (applies to all images).
+        target_transformations (torch.Tensor): Tensor of shape (N,) with target transformations for each image.
+    
+    Returns:
+        torch.Tensor: Transformed batch of images, shape (N, C, H, W).
+    """
+    # Get parameters for the current transformation
+    current_params = transformations[current_transformation]
+    
+    # Initialize a list to store transformed images
+    x_new = []
+    y_new = []
+    
+    # Process each image in the batch
+    batch_size = batch_tensor.shape[0]
+    for idx, (img, target_transformation) in enumerate(zip(batch_tensor, target_transformations)):
+        if idx % 2 == 0:
+            # Get target parameters for the current image
+            target_params = transformations[int(target_transformation.item())]
+            
+            # Calculate relative adjustments
+            relative_brightness = target_params['brightness'] / current_params['brightness']
+            relative_contrast = target_params['contrast'] / current_params['contrast']
+            relative_hue = target_params['hue'] - current_params['hue']
+            
+            # Apply relative adjustments
+            img = adjust_brightness(img, relative_brightness)
+            img = adjust_contrast(img, relative_contrast)
+            img = adjust_hue(img, relative_hue)
+            y_new.append(0)  # Label 0: Similar
+        else:
+            while True:
+                rand_idx = random.randint(0, batch_size - 1)
+                if rand_idx != idx:  # Ensure it's a different image
+                    break
+            img = batch_tensor[rand_idx]
+            y_new.append(1)  # Label 1: Dissimilar
+        x_new.append(img)
+    
+    # Stack the transformed images back into a batch
+    x_new = torch.stack(x_new)
+    y_new = torch.tensor(y_new, dtype=torch.float32)
+    
+    return x_new, y_new
+
 class CentralizedFashion(): 
     def __init__(self, device, network, criterion, base_dir):
         """
@@ -205,6 +269,7 @@ class SplitNetwork():
 
         """
         self.losses  = {'train':[[] for i in range(self.num_clients)], 'test':[[] for i in range(self.num_clients)]}
+        self.reg_losses  = {'train':[[] for i in range(self.num_clients)], 'test':[[] for i in range(self.num_clients)]}
         self.balanced_accs = {'train':[[] for i in range(self.num_clients)], 'test':[[] for i in range(self.num_clients)]}
 
     def set_optimizer(self, name, lr):
@@ -297,7 +362,7 @@ class SplitNetwork():
                 whole_preds.append(predicted.detach().cpu())    
             self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, len(self.testloader), whole_probs, train= False)
 
-    def metrics(self, client_i, whole_labels, whole_preds, running_loss_client_i, len_loader, whole_probs, train):
+    def metrics(self, client_i, whole_labels, whole_preds, running_loss_client_i, running_reg_loss_client_i, len_loader, whole_probs, train):
         """
         Save metrics as pickle files and the model as .pt file.
         
@@ -305,6 +370,7 @@ class SplitNetwork():
         whole_labels = torch.cat(whole_labels)
         whole_preds = torch.cat(whole_preds)
         loss_epoch = running_loss_client_i/len_loader
+        reg_loss_epoch = running_reg_loss_client_i/len_loader
         balanced_acc = balanced_accuracy_score(whole_labels.detach().cpu(), whole_preds.detach().cpu())
        
         if train == True:
@@ -313,21 +379,25 @@ class SplitNetwork():
             eval_name = 'test'
 
         self.losses[eval_name][client_i].append(loss_epoch)
+        self.reg_losses[eval_name][client_i].append(reg_loss_epoch)
         self.balanced_accs[eval_name][client_i].append(balanced_acc)
 
         print(f"client{client_i}_{eval_name}:")
         print(f" Loss {eval_name}:{loss_epoch:.3f}")
+        print(f" Reg loss {eval_name}:{reg_loss_epoch:.3f}")
         print(f"balanced accuracy {eval_name}:{balanced_acc:.3f}")
 
     def save_pickles(self, base_dir): 
         with open(os.path.join(base_dir,'loss_epoch'), 'wb') as handle:
             pkl.dump(self.losses, handle)
+        with open(os.path.join(base_dir,'reg_loss_epoch'), 'wb') as handle:
+            pkl.dump(self.reg_losses, handle)
         with open(os.path.join(base_dir,'balanced_accs'), 'wb') as handle:
             pkl.dump(self.balanced_accs, handle)
 
 class FeSVBiS(nn.Module): 
     def __init__(
-        self, ViT_name, num_classes,
+        self, ViT_name, num_classes, alpha, device,
         num_clients=6, in_channels=3, ViT_pretrained=False, 
         initial_block=1, final_block=6, resnet_dropout = None, DP = False, mean = None, std = None
         ) -> None:
@@ -351,17 +421,37 @@ class FeSVBiS(nn.Module):
         self.DP = DP
         self.mean = mean
         self.std = std
+        self.device = device
+        self.alpha = alpha
+        self.num_clients = num_clients
+        self.criterion = ContrastiveLoss(margin=1.0)
 
     def forward(self, x, chosen_block, client_idx):
-        x = self.resnet50_clients[client_idx](x)
+        x_orig = self.resnet50_clients[client_idx](x)
+
+        if self.alpha != 0:
+            batch_size = x.shape[0]
+            d = client_idx
+            d_new = torch.randint(0, self.num_clients, (batch_size, )).to(self.device)
+            x_new, y_new = transition_batch_images(
+                x, d, d_new
+            )
+
+            z = torch.mean(F.relu(x_orig), dim=1)
+            z_new = torch.mean(F.relu(self.resnet50_clients[client_idx](x_new)), dim=1)
+            reg = self.alpha * self.criterion(z_new, z, y_new.to(self.device))
+        else:
+            reg = 0
+        x = x_orig
+
         if self.DP: 
-            noise = torch.randn(size= x.shape).cuda() * self.std + self.mean
+            noise = torch.randn(size= x.shape).to(self.device) * self.std + self.mean
             x = x + noise
         for block_num in range(chosen_block):
             x = self.vit.blocks[block_num](x)
         x = self.common_network(x)
         x = self.mlp_clients_tail[client_idx](x)
-        return x
+        return x, reg
 
 
 class ResidualBlock(nn.Module):
@@ -425,6 +515,7 @@ class SplitFeSViBS(SplitNetwork):
 
         """
         running_loss_client_i = 0
+        running_reg_loss_client_i = 0
         whole_labels = []
         whole_preds = []
         whole_probs = []
@@ -442,16 +533,18 @@ class SplitFeSViBS(SplitNetwork):
             self.optimizer.zero_grad()
             imgs, labels = data[0].to(self.device), data[1].to(self.device)
             labels = labels.reshape(labels.shape[0])
-            tail_output = self.network(x=imgs, chosen_block=self.chosen_block, client_idx = client_i)
+            tail_output, reg_loss = self.network(x=imgs, chosen_block=self.chosen_block, client_idx = client_i)
             loss = self.criterion(tail_output, labels)
-            loss.backward()
+            (loss + reg_loss).backward()
             self.optimizer.step()
             running_loss_client_i+= loss.item() 
+            if self.network.alpha != 0:
+                running_reg_loss_client_i+= reg_loss.item() 
             _, predicted = torch.max(tail_output, 1)
             whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
             whole_labels.append(labels.detach().cpu())
             whole_preds.append(predicted.detach().cpu()) 
-        self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, len(self.CLIENTS_DATALOADERS[client_i]), whole_probs, train = True)
+        self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, running_reg_loss_client_i, len(self.CLIENTS_DATALOADERS[client_i]), whole_probs, train = True)
         
         weight_dic['blocks'] = weight_vec(self.network.vit.blocks).detach().cpu()
         weight_dic['cls'] = self.network.vit.cls_token.detach().cpu()
@@ -471,6 +564,7 @@ class SplitFeSViBS(SplitNetwork):
                 
         """
         running_loss_client_i = 0
+        running_reg_loss_client_i = 0
         whole_labels = []
         whole_preds = []
         whole_probs = []
@@ -481,14 +575,16 @@ class SplitFeSViBS(SplitNetwork):
             for data in tqdm(self.testloaders[client_i]): 
                 imgs, labels = data[0].to(self.device), data[1].to(self.device)
                 labels = labels.reshape(labels.shape[0])
-                tail_output = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
+                tail_output, reg_loss = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
                 loss = self.criterion(tail_output, labels)
                 running_loss_client_i+= loss.item() 
+                if self.network.alpha != 0:
+                    running_reg_loss_client_i+= reg_loss.item() 
                 _, predicted = torch.max(tail_output, 1)
                 whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
                 whole_labels.append(labels.detach().cpu())
                 whole_preds.append(predicted.detach().cpu())    
-            self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, len(self.testloaders[client_i]), whole_probs, train= False)
+            self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, running_reg_loss_client_i, len(self.testloaders[client_i]), whole_probs, train= False)
 
     def eval_round(self, client_i):
         """
@@ -498,6 +594,7 @@ class SplitFeSViBS(SplitNetwork):
                 
         """
         running_loss_client_i = 0
+        running_reg_loss_client_i = 0
         whole_labels = []
         whole_preds = []
         whole_probs = []
@@ -508,11 +605,31 @@ class SplitFeSViBS(SplitNetwork):
             for data in tqdm(self.testloader): 
                 imgs, labels = data[0].to(self.device), data[1].to(self.device)
                 labels = labels.reshape(labels.shape[0])
-                tail_output = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
+                tail_output, reg_loss = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
                 loss = self.criterion(tail_output, labels)
                 running_loss_client_i+= loss.item() 
+                if self.network.alpha != 0:
+                    running_reg_loss_client_i+= reg_loss.item() 
                 _, predicted = torch.max(tail_output, 1)
                 whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
                 whole_labels.append(labels.detach().cpu())
                 whole_preds.append(predicted.detach().cpu())    
-            self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, len(self.testloader), whole_probs, train= False)
+            self.metrics(client_i, whole_labels, whole_preds, running_loss_client_i, running_reg_loss_client_i, len(self.testloaders[client_i]), whole_probs, train= False)
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin=1.0):
+        super(ContrastiveLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output1, output2, label):
+        # Compute the Euclidean distance between embeddings
+        euclidean_distance = torch.nn.functional.pairwise_distance(output1, output2)
+        # print(f"output1.shape: {output1.shape}")
+        # print(f"euclidean_distance.shape: {euclidean_distance.shape}")
+        # print(f"label.shape: {label.shape}")
+        # Contrastive loss formula
+        loss = torch.mean(
+            (1 - label) * torch.pow(euclidean_distance, 2) +  # Similar pairs
+            label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)  # Dissimilar pairs
+        )
+        return loss

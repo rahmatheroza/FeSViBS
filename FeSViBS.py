@@ -23,7 +23,7 @@ def fesvibs(args):
         method_flag = 'SViBS'
 
     if torch.cuda.is_available():
-        device = 'cuda'
+        device = f'cuda:{args.dev_id}'
     else: 
         device = 'cpu'
 
@@ -66,7 +66,7 @@ def fesvibs(args):
     criterion = nn.CrossEntropyLoss()
 
     fesvibs_network = models.FeSVBiS(
-            ViT_name= args.model_name, num_classes= num_classes,
+            ViT_name= args.model_name, num_classes= num_classes, alpha = args.alpha, device = device, 
             num_clients = args.num_clients, in_channels = num_channels,
             ViT_pretrained= args.pretrained,
             initial_block= args.initial_block, final_block= args.final_block,
@@ -172,6 +172,8 @@ if __name__ == "__main__":
     parser.add_argument('--delta',  type=float, default= 0.00001, help='Delta Value for differential privacy')
     parser.add_argument('--resnet_dropout',  type=float, default= 0.5, help='ResNet Dropout, Default: 0.5')
     parser.add_argument('--num_classes',  type=int, default= 2, help='Number of classes for other dataset, default: 2')
+    parser.add_argument('--alpha',  type=float, default= 0, help='Weight of the reg loss, Default: 0')
+    parser.add_argument('--dev_id',  type=int, default= 0, help='dev_id, default: 0')
     args = parser.parse_args()
 
     fesvibs(args)

@@ -16,6 +16,9 @@ import torch.nn.functional as F
 from torchvision.transforms.functional import adjust_brightness, adjust_contrast, adjust_hue
 import random
 
+import cv2
+
+
 transformations = {
     0: {'brightness': 1.4, 'contrast': 1.2, 'hue': 0.08}, 
     1: {'brightness': 1.2, 'contrast': 1.1, 'hue': 0.06}, 
@@ -25,7 +28,7 @@ transformations = {
     5: {'brightness': 0.6, 'contrast': 0.6, 'hue': 0.0},  
 }
 
-def  transition_batch_images(batch_tensor, current_transformation, target_transformations):
+def  transition_batch_images(batch_tensor, current_transformation, target_transformations, segmentation, device):
     """
     Transforms a batch of images from a single current transformation to per-image target transformations.
     
@@ -39,6 +42,7 @@ def  transition_batch_images(batch_tensor, current_transformation, target_transf
     """
     # Get parameters for the current transformation
     current_params = transformations[current_transformation]
+
     
     # Initialize a list to store transformed images
     x_new = []
@@ -55,6 +59,12 @@ def  transition_batch_images(batch_tensor, current_transformation, target_transf
             relative_brightness = target_params['brightness'] / current_params['brightness']
             relative_contrast = target_params['contrast'] / current_params['contrast']
             relative_hue = target_params['hue'] - current_params['hue']
+
+            if segmentation:
+                # Apply healthy skin segmentation
+                # print(f'shape before segmentation must be [C,H,N]: {img.shape}')
+                img = segment_skin_tensor(img, device)
+                # print(f'shape after segmentation also must be [C,H,N]: {img.shape}')
             
             # Apply relative adjustments
             img = adjust_brightness(img, relative_brightness)
@@ -75,6 +85,53 @@ def  transition_batch_images(batch_tensor, current_transformation, target_transf
     y_new = torch.tensor(y_new, dtype=torch.float32)
     
     return x_new, y_new
+
+def segment_skin_tensor(image_tensor, device):
+    """
+    Apply YCbCr-based skin segmentation to a PyTorch image tensor (C, H, W).
+    Returns a masked PyTorch tensor with background removed.
+    """
+    # Convert PyTorch tensor to NumPy (C, H, W) → (H, W, C)
+    image_np = image_tensor.permute(1, 2, 0).cpu().numpy()  # Convert to (H, W, C)
+
+    # Convert from range [0, 1] or [-1, 1] to [0, 255]
+    if image_np.max() <= 1.0:
+        image_np = (image_np * 255).astype(np.uint8)
+    else:
+        image_np = image_np.astype(np.uint8)
+
+    # Ensure the image has 3 channels (RGB)
+    if image_np.shape[-1] == 1:
+        image_np = cv2.cvtColor(image_np, cv2.COLOR_GRAY2RGB)
+
+    # Split RGB channels
+    R, G, B = image_np[:, :, 0], image_np[:, :, 1], image_np[:, :, 2]
+
+    # First set of conditions in RGB space
+    mask_rgb = (R > 95) & (R > G) & (R > B) & (G > 40) & (B > 20) & (np.abs(R - G) > 15)
+
+    # Convert to YCbCr color space
+    ycbcr_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2YCrCb)
+    Y, Cr, Cb = cv2.split(ycbcr_image)
+
+    # Second set of conditions in YCbCr space
+    mask_ycbcr = (Cr > 135) & \
+                 (Cr >= (0.3448 * Cb + 76.2069)) & \
+                 (Cr >= (-4.5652 * Cb + 234.5652)) & \
+                 (Cr <= (-1.15 * Cb + 301.75)) & \
+                 (Cr <= (-2.2857 * Cb + 432.85))
+
+    # Combine both masks
+    final_mask = mask_rgb & mask_ycbcr
+
+    # Create a new image where skin regions are retained
+    output_np = np.zeros_like(image_np)
+    output_np[final_mask] = image_np[final_mask]
+
+    # Convert back to PyTorch tensor (H, W, C) → (C, H, W)
+    output_tensor = torch.tensor(output_np, dtype=torch.float32).permute(2, 0, 1) / 255.0  # Normalize to [0,1]
+
+    return output_tensor.to(device)
 
 class CentralizedFashion(): 
     def __init__(self, device, network, criterion, base_dir):
@@ -397,7 +454,7 @@ class SplitNetwork():
 
 class FeSVBiS(nn.Module): 
     def __init__(
-        self, ViT_name, num_classes, alpha, device,
+        self, ViT_name, num_classes, alpha, device, segmentation,
         num_clients=6, in_channels=3, ViT_pretrained=False, 
         initial_block=1, final_block=6, resnet_dropout = None, DP = False, mean = None, std = None
         ) -> None:
@@ -423,6 +480,7 @@ class FeSVBiS(nn.Module):
         self.std = std
         self.device = device
         self.alpha = alpha
+        self.segmentation = segmentation
         self.num_clients = num_clients
         self.criterion = ContrastiveLoss(margin=1.0)
 
@@ -434,7 +492,7 @@ class FeSVBiS(nn.Module):
             d = client_idx
             d_new = torch.randint(0, self.num_clients, (batch_size, )).to(self.device)
             x_new, y_new = transition_batch_images(
-                x, d, d_new
+                x, d, d_new, self.segmentation, self.device
             )
 
             z = torch.mean(F.relu(x_orig), dim=1)

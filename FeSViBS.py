@@ -12,7 +12,7 @@ from torch import nn
 
 
 def fesvibs(args):
-
+    print(args)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -30,17 +30,17 @@ def fesvibs(args):
     if args.DP:
         std = np.sqrt(2 * np.math.log(1.25/args.delta)) / args.epsilon 
         mean=0
-        dir_name = f"{args.model_name}_{args.lr}lr_{args.dataset_name}_{args.num_clients}Clients_{args.initial_block}to{args.final_block}Blocks_{args.batch_size}Batch__{args.epsilon,args.delta}DP_{method_flag}"
+        # dir_name = f"{args.model_name}_{args.lr}lr_{args.dataset_name}_{args.num_clients}Clients_{args.initial_block}to{args.final_block}Blocks_{args.batch_size}Batch__{args.epsilon,args.delta}DP_{method_flag}"
     else:
         mean = 0
         std = 0
-        dir_name = f"{args.model_name}_{args.lr}lr_{args.dataset_name}_{args.num_clients}Clients_{args.initial_block}to{args.final_block}Blocks_{args.batch_size}Batch_{method_flag}"
+        # dir_name = f"{args.model_name}_{args.lr}lr_{args.dataset_name}_{args.num_clients}Clients_{args.initial_block}to{args.final_block}Blocks_{args.batch_size}Batch_{method_flag}"
 
-    save_dir = f'{dir_name}' 
+    save_dir = f'{args.save_dir}' 
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)    
 
-    print(f"Logging to: {dir_name}")
+    print(f"Logging to: {save_dir}")
 
     print('Getting the Dataset and Dataloader!')
     if args.dataset_name == 'HAM': 
@@ -66,7 +66,7 @@ def fesvibs(args):
     criterion = nn.CrossEntropyLoss()
 
     fesvibs_network = models.FeSVBiS(
-            ViT_name= args.model_name, num_classes= num_classes, alpha = args.alpha, device = device, 
+            ViT_name= args.model_name, num_classes= num_classes, alpha = args.alpha, device = device, segmentation = args.segmentation,
             num_clients = args.num_clients, in_channels = num_channels,
             ViT_pretrained= args.pretrained,
             initial_block= args.initial_block, final_block= args.final_block,
@@ -174,6 +174,8 @@ if __name__ == "__main__":
     parser.add_argument('--num_classes',  type=int, default= 2, help='Number of classes for other dataset, default: 2')
     parser.add_argument('--alpha',  type=float, default= 0, help='Weight of the reg loss, Default: 0')
     parser.add_argument('--dev_id',  type=int, default= 0, help='dev_id, default: 0')
+    parser.add_argument('--save_dir', type=str, default= '.', help='Path to the directory where the model will be saved.')
+    parser.add_argument('--segmentation', type=bool, default= False, help='Healthy skin segmentation with YCbCr algorithm , default: False')
     args = parser.parse_args()
 
     fesvibs(args)

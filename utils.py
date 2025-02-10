@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+import cv2
 
 def weight_vec(network):
     A = []
@@ -275,6 +276,7 @@ class OTHER(Dataset):
 
         img_name = os.path.join(self.image_root,
                                 self.csv['image'][idx])
+        
         sample = Image.open(img_name)
         target = self.csv['target'][idx]
 

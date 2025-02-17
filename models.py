@@ -28,7 +28,7 @@ transformations = {
     5: {'brightness': 0.6, 'contrast': 0.6, 'hue': 0.0},  
 }
 
-def  transition_batch_images(batch_tensor, current_transformation, target_transformations, segmentation, device):
+def  transition_batch_images(batch_tensor, labels, current_transformation, target_transformations, segmentation, device):
     """
     Transforms a batch of images from a single current transformation to per-image target transformations.
     
@@ -72,12 +72,36 @@ def  transition_batch_images(batch_tensor, current_transformation, target_transf
             img = adjust_hue(img, relative_hue)
             y_new.append(0)  # Label 0: Similar
         else:
-            while True:
-                rand_idx = random.randint(0, batch_size - 1)
-                if rand_idx != idx:  # Ensure it's a different image
-                    break
-            img = batch_tensor[rand_idx]
-            y_new.append(1)  # Label 1: Dissimilar
+            # Assume labels is a list or array of batch labels
+            valid_indices = [i for i in range(batch_size) if i != idx and labels[i] != labels[idx]] # Ensure it's a different image and different label
+
+            if valid_indices:  # Ensure there's at least one valid choice
+                rand_idx = random.choice(valid_indices)
+                img = batch_tensor[rand_idx]
+                y_new.append(1)  # Label 1: Dissimilar
+            else:
+                # rand_idx = None  # Or handle the case where no valid index exists
+                print('no valid index exists.')
+                # Get target parameters for the current image
+                target_params = transformations[int(target_transformation.item())]
+                
+                # Calculate relative adjustments
+                relative_brightness = target_params['brightness'] / current_params['brightness']
+                relative_contrast = target_params['contrast'] / current_params['contrast']
+                relative_hue = target_params['hue'] - current_params['hue']
+
+                if segmentation:
+                    # Apply healthy skin segmentation
+                    # print(f'shape before segmentation must be [C,H,N]: {img.shape}')
+                    img = segment_skin_tensor(img, device)
+                    # print(f'shape after segmentation also must be [C,H,N]: {img.shape}')
+                
+                # Apply relative adjustments
+                img = adjust_brightness(img, relative_brightness)
+                img = adjust_contrast(img, relative_contrast)
+                img = adjust_hue(img, relative_hue)
+                y_new.append(0)  # Label 0: Similar
+            
         x_new.append(img)
     
     # Stack the transformed images back into a batch
@@ -484,7 +508,7 @@ class FeSVBiS(nn.Module):
         self.num_clients = num_clients
         self.criterion = ContrastiveLoss(margin=1.0)
 
-    def forward(self, x, chosen_block, client_idx):
+    def forward(self, x, y, chosen_block, client_idx):
         x_orig = self.resnet50_clients[client_idx](x)
 
         if self.alpha != 0:
@@ -492,14 +516,24 @@ class FeSVBiS(nn.Module):
             d = client_idx
             d_new = torch.randint(0, self.num_clients, (batch_size, )).to(self.device)
             x_new, y_new = transition_batch_images(
-                x, d, d_new, self.segmentation, self.device
+                x, y, d, d_new, self.segmentation, self.device
             )
 
             z = torch.mean(F.relu(x_orig), dim=1)
             z_new = torch.mean(F.relu(self.resnet50_clients[client_idx](x_new)), dim=1)
             reg = self.alpha * self.criterion(z_new, z, y_new.to(self.device))
         else:
-            reg = 0
+            # reg = 0
+            batch_size = x.shape[0]
+            d = client_idx
+            d_new = torch.randint(0, self.num_clients, (batch_size, )).to(self.device)
+            x_new, y_new = transition_batch_images(
+                x, y, d, d_new, self.segmentation, self.device
+            )
+
+            z = torch.mean(F.relu(x_orig), dim=1)
+            z_new = torch.mean(F.relu(self.resnet50_clients[client_idx](x_new)), dim=1)
+            reg = 1 * self.criterion(z_new, z, y_new.to(self.device))
         x = x_orig
 
         if self.DP: 
@@ -591,13 +625,16 @@ class SplitFeSViBS(SplitNetwork):
             self.optimizer.zero_grad()
             imgs, labels = data[0].to(self.device), data[1].to(self.device)
             labels = labels.reshape(labels.shape[0])
-            tail_output, reg_loss = self.network(x=imgs, chosen_block=self.chosen_block, client_idx = client_i)
+            tail_output, reg_loss = self.network(x=imgs, y=labels, chosen_block=self.chosen_block, client_idx = client_i)
             loss = self.criterion(tail_output, labels)
-            (loss + reg_loss).backward()
+            if self.network.alpha == 0:
+                loss.backward()
+            else:
+                (loss + reg_loss).backward()
             self.optimizer.step()
             running_loss_client_i+= loss.item() 
-            if self.network.alpha != 0:
-                running_reg_loss_client_i+= reg_loss.item() 
+            # if self.network.alpha != 0:
+            running_reg_loss_client_i+= reg_loss.item() 
             _, predicted = torch.max(tail_output, 1)
             whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
             whole_labels.append(labels.detach().cpu())
@@ -633,11 +670,11 @@ class SplitFeSViBS(SplitNetwork):
             for data in tqdm(self.testloaders[client_i]): 
                 imgs, labels = data[0].to(self.device), data[1].to(self.device)
                 labels = labels.reshape(labels.shape[0])
-                tail_output, reg_loss = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
+                tail_output, reg_loss = self.network(x=imgs, y=labels, chosen_block=num_b, client_idx = client_i)
                 loss = self.criterion(tail_output, labels)
                 running_loss_client_i+= loss.item() 
-                if self.network.alpha != 0:
-                    running_reg_loss_client_i+= reg_loss.item() 
+                # if self.network.alpha != 0:
+                running_reg_loss_client_i+= reg_loss.item() 
                 _, predicted = torch.max(tail_output, 1)
                 whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
                 whole_labels.append(labels.detach().cpu())
@@ -663,11 +700,11 @@ class SplitFeSViBS(SplitNetwork):
             for data in tqdm(self.testloader): 
                 imgs, labels = data[0].to(self.device), data[1].to(self.device)
                 labels = labels.reshape(labels.shape[0])
-                tail_output, reg_loss = self.network(x=imgs, chosen_block=num_b, client_idx = client_i)
+                tail_output, reg_loss = self.network(x=imgs, y=labels, chosen_block=num_b, client_idx = client_i)
                 loss = self.criterion(tail_output, labels)
                 running_loss_client_i+= loss.item() 
-                if self.network.alpha != 0:
-                    running_reg_loss_client_i+= reg_loss.item() 
+                # if self.network.alpha != 0:
+                running_reg_loss_client_i+= reg_loss.item() 
                 _, predicted = torch.max(tail_output, 1)
                 whole_probs.append(torch.nn.Softmax(dim = -1)(tail_output).detach().cpu())
                 whole_labels.append(labels.detach().cpu())
